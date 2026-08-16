@@ -24,33 +24,29 @@ jobs:
       with:
         gradle-version: 9.3.1
 
-    - name: Generate Debug Keystore and Build
+    - name: Generate Debug Keystore and Build APK
       run: |
-        BUILD_FILE=$(find . -name "build.gradle*" -print -quit)
-        if [ -z "$BUILD_FILE" ]; then
-          echo "Ошибка: Проект Android не найден!"
-          exit 1
+        echo "=== Сборка проекта Android ==="
+        # Ensure debug keystore exists in workspace root
+        if [ ! -f "$GITHUB_WORKSPACE/debug.keystore" ]; then
+          echo "Генерация debug.keystore..."
+          keytool -genkey -v -keystore $GITHUB_WORKSPACE/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         fi
         
-        SUB_DIR=$(dirname "$BUILD_FILE")
-        echo "Проект найден в папке: $SUB_DIR"
-        cd "$SUB_DIR"
-        
-        # Generate debug.keystore in the root project directory where build.gradle.kts expects it (${rootDir}/debug.keystore)
-        keytool -genkey -v -keystore $GITHUB_WORKSPACE/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-        
-        gradle assembleDebug --no-daemon
+        gradle :app:assembleDebug --stacktrace --no-daemon
         
         mkdir -p $GITHUB_WORKSPACE/output_apk
-        APK_PATH=$(find . -name "*.apk" -print -quit)
-        if [ -z "$APK_PATH" ]; then
-          echo "Ошибка: APK не скомпилировался!"
+        APK_PATH=$(find . -name "*debug*.apk" -o -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+          echo "Ошибка: APK файл не найден после сборки!"
           exit 1
         fi
-        cp "$APK_PATH" $GITHUB_WORKSPACE/output_apk/app-debug.apk
+        echo "Найден скомпилированный APK: $APK_PATH"
+        cp "$APK_PATH" $GITHUB_WORKSPACE/output_apk/ZterOS-debug.apk
 
     - name: Upload Finished APK
       uses: actions/upload-artifact@v4
       with:
-        name: Project-APK
-        path: output_apk/app-debug.apk
+        name: ZterOS-Debug-APK
+        path: output_apk/ZterOS-debug.apk
+        retention-days: 14
