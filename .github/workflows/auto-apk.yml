@@ -36,7 +36,8 @@ jobs:
         echo "Проект найден в папке: $SUB_DIR"
         cd "$SUB_DIR"
         
-        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        # Generate debug.keystore in the root project directory where build.gradle.kts expects it (${rootDir}/debug.keystore)
+        keytool -genkey -v -keystore $GITHUB_WORKSPACE/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         
         gradle assembleDebug --no-daemon
         
