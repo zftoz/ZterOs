@@ -1,0 +1,7 @@
+{
+  "name": "OS Simulator",
+  "description": "A mobile operating system simulation featuring an ultra-slim symmetric bezel smartphone frame, realistic desktop, status bar, and placeholder app ecosystem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
