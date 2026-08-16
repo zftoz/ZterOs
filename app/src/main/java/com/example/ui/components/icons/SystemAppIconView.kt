@@ -1,14 +1,16 @@
 package com.example.ui.components.icons
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
@@ -35,19 +37,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.model.SystemAppId
+import java.util.concurrent.ConcurrentHashMap
+
+private val iconBitmapCache = ConcurrentHashMap<SystemAppId, ImageBitmap?>()
 
 /**
- * Universal, ultra-resilient Vector + PNG System App Icon.
- * Renders beautifully crafted Apple/Pixel-grade vector icons immediately,
- * or PNG bitmap if available, with 0% risk of blank icons or crash on any Android version.
+ * Loads the user's PNG icon drawables directly from raw resource streams.
  */
 @Composable
 fun SystemAppIconGraphic(
@@ -57,35 +61,9 @@ fun SystemAppIconGraphic(
   val context = LocalContext.current
   val iconShape = RoundedCornerShape(percent = 23)
 
-  // Try decoding PNG bitmap with fallback
   val bitmap = remember(appId) {
-    val resId = when (appId) {
-      SystemAppId.DIALER -> R.drawable.system_dialer
-      SystemAppId.MESSAGES -> R.drawable.system_messages
-      SystemAppId.BROWSER -> R.drawable.system_browser
-      SystemAppId.CAMERA -> R.drawable.system_camera
-      SystemAppId.CALENDAR -> R.drawable.system_calendar
-      SystemAppId.CLOCK -> R.drawable.system_clock
-      SystemAppId.PHOTOS -> R.drawable.system_photos
-      SystemAppId.SETTINGS -> R.drawable.system_settings
-      SystemAppId.MUSIC -> R.drawable.system_music
-      SystemAppId.FILE_MANAGER -> R.drawable.system_filemanager
-      SystemAppId.CALCULATOR -> R.drawable.system_calculator
-      SystemAppId.COMPASS -> R.drawable.system_compass
-      SystemAppId.PLACEHOLDER -> null
-    }
-
-    if (resId != null) {
-      try {
-        val opts = BitmapFactory.Options().apply {
-          inScaled = false
-        }
-        BitmapFactory.decodeResource(context.resources, resId, opts)?.asImageBitmap()
-      } catch (_: Throwable) {
-        null
-      }
-    } else {
-      null
+    iconBitmapCache.getOrPut(appId) {
+      loadRawAppBitmap(context, appId)
     }
   }
 
@@ -104,10 +82,69 @@ fun SystemAppIconGraphic(
         contentScale = ContentScale.Crop
       )
     } else {
-      // Vector rendered fallback with OS gradients
       VectorAppIconFallback(appId = appId)
     }
   }
+}
+
+private fun loadRawAppBitmap(context: Context, appId: SystemAppId): ImageBitmap? {
+  val resId = when (appId) {
+    SystemAppId.DIALER -> R.drawable.system_dialer
+    SystemAppId.MESSAGES -> R.drawable.system_messages
+    SystemAppId.BROWSER -> R.drawable.system_browser
+    SystemAppId.CAMERA -> R.drawable.system_camera
+    SystemAppId.CALENDAR -> R.drawable.system_calendar
+    SystemAppId.CLOCK -> R.drawable.system_clock
+    SystemAppId.PHOTOS -> R.drawable.system_photos
+    SystemAppId.SETTINGS -> R.drawable.system_settings
+    SystemAppId.MUSIC -> R.drawable.system_music
+    SystemAppId.FILE_MANAGER -> R.drawable.system_filemanager
+    SystemAppId.CALCULATOR -> R.drawable.system_calculator
+    SystemAppId.COMPASS -> R.drawable.system_compass
+    SystemAppId.PLACEHOLDER -> null
+  } ?: return null
+
+  // 1. Direct raw byte stream decoding (bypasses any resource density bugs)
+  try {
+    context.resources.openRawResource(resId).use { stream ->
+      val bmp = BitmapFactory.decodeStream(stream)
+      if (bmp != null) {
+        return bmp.asImageBitmap()
+      }
+    }
+  } catch (e: Throwable) {
+    Log.w("SystemAppIcon", "Raw stream load failed for $appId: ${e.message}")
+  }
+
+  // 2. Standard BitmapFactory decode
+  try {
+    val bmp = BitmapFactory.decodeResource(context.resources, resId)
+    if (bmp != null) {
+      return bmp.asImageBitmap()
+    }
+  } catch (e: Throwable) {
+    Log.w("SystemAppIcon", "Resource decode failed for $appId: ${e.message}")
+  }
+
+  // 3. ContextCompat drawable rendering
+  try {
+    val drawable = ContextCompat.getDrawable(context, resId)
+    if (drawable is BitmapDrawable && drawable.bitmap != null) {
+      return drawable.bitmap.asImageBitmap()
+    } else if (drawable != null) {
+      val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 200
+      val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 200
+      val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bmp)
+      drawable.setBounds(0, 0, width, height)
+      drawable.draw(canvas)
+      return bmp.asImageBitmap()
+    }
+  } catch (e: Throwable) {
+    Log.w("SystemAppIcon", "Drawable draw failed for $appId: ${e.message}")
+  }
+
+  return null
 }
 
 @Composable
@@ -219,8 +256,7 @@ private fun VectorAppIconFallback(appId: SystemAppId) {
       imageVector = config.icon,
       contentDescription = null,
       tint = config.tint,
-      modifier = Modifier
-        .fillMaxSize(0.55f)
+      modifier = Modifier.fillMaxSize(0.55f)
     )
   }
 }
