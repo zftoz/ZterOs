@@ -11,6 +11,8 @@ jobs:
     steps:
     - name: Checkout project code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
     
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -24,29 +26,38 @@ jobs:
       with:
         gradle-version: 9.3.1
 
-    - name: Generate Debug Keystore and Build APK
+    - name: Build High-Quality Debug APK
       run: |
-        echo "=== Сборка проекта Android ==="
-        # Ensure debug keystore exists in workspace root
+        echo "=== Запуск точной сборки APK без сжатия ресурсов ==="
+        
+        # Ensure debug keystore exists
         if [ ! -f "$GITHUB_WORKSPACE/debug.keystore" ]; then
-          echo "Генерация debug.keystore..."
+          echo "Генерация ключа подписи debug.keystore..."
           keytool -genkey -v -keystore $GITHUB_WORKSPACE/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         fi
         
-        gradle :app:assembleDebug --stacktrace --no-daemon
+        # Assemble APK with parallel execution and no lossy crunching
+        gradle :app:assembleDebug -Dorg.gradle.parallel=true -Dorg.gradle.caching=true --stacktrace --no-daemon
         
         mkdir -p $GITHUB_WORKSPACE/output_apk
-        APK_PATH=$(find . -name "*debug*.apk" -o -name "*.apk" | head -n 1)
+        APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
         if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-          echo "Ошибка: APK файл не найден после сборки!"
+          echo "Поиск по общему пути..."
+          APK_PATH=$(find . -name "*debug*.apk" -o -name "*.apk" | head -n 1)
+        fi
+        
+        if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+          echo "Ошибка: скомпилированный APK не найден!"
           exit 1
         fi
-        echo "Найден скомпилированный APK: $APK_PATH"
+        
+        echo "Сборка завершена успешно! APK файл: $APK_PATH"
+        ls -lh "$APK_PATH"
         cp "$APK_PATH" $GITHUB_WORKSPACE/output_apk/ZterOS-debug.apk
 
-    - name: Upload Finished APK
+    - name: Upload Uncompressed Quality APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ZterOS-Debug-APK
         path: output_apk/ZterOS-debug.apk
-        retention-days: 14
+        retention-days: 30

@@ -46,9 +46,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.model.SystemAppId
-import java.util.concurrent.ConcurrentHashMap
 
-private val iconBitmapCache = ConcurrentHashMap<SystemAppId, ImageBitmap?>()
+// Safe cache that does NOT throw NPE on null values
+private val iconBitmapCache = HashMap<SystemAppId, ImageBitmap?>()
 
 /**
  * Loads the user's PNG icon drawables directly from raw resource streams.
@@ -61,9 +61,15 @@ fun SystemAppIconGraphic(
   val context = LocalContext.current
   val iconShape = RoundedCornerShape(percent = 23)
 
-  val bitmap = remember(appId) {
-    iconBitmapCache.getOrPut(appId) {
-      loadRawAppBitmap(context, appId)
+  val bitmap: ImageBitmap? = remember(appId) {
+    synchronized(iconBitmapCache) {
+      if (iconBitmapCache.containsKey(appId)) {
+        iconBitmapCache[appId]
+      } else {
+        val loaded = loadRawAppBitmap(context, appId)
+        iconBitmapCache[appId] = loaded
+        loaded
+      }
     }
   }
 
